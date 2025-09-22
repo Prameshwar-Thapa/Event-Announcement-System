@@ -16,8 +16,11 @@ During my cloud learning journey, I wanted to understand how modern notification
 
 ## Architecture
 
+![System Architecture](generated-diagrams/event-announcement-architecture.png)
+
+**Data Flow:**
 ```
-Web Interface → API Gateway → Lambda Function → SNS Topics → Email/SMS
+Admin User → S3 Website → API Gateway → Lambda → SNS → Email/SMS Subscribers
 ```
 
 The system uses a serverless approach where each component scales independently:
@@ -106,16 +109,7 @@ Potential enhancements I'm considering:
 - **Analytics Dashboard**: Tracking delivery rates and engagement
 - **Multi-Language**: Supporting international notifications
 
-## Interview Talking Points
 
-This project demonstrates:
-- **System Design**: Scalable, event-driven architecture
-- **Cloud Native**: Proper use of managed services
-- **Cost Optimization**: Serverless approach reduces operational costs
-- **DevOps**: Infrastructure as Code and CI/CD pipelines
-- **Problem Solving**: Real-world challenges and solutions
-
-See [INTERVIEW.md](docs/INTERVIEW.md) for detailed STAR method responses.
 
 ## Documentation
 
