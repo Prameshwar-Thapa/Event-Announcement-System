@@ -1,0 +1,388 @@
+// Configuration
+const CONFIG = {
+    // Replace this with your actual API Gateway endpoint after deployment
+    API_ENDPOINT: 'https://3f5hatohkc.execute-api.us-east-1.amazonaws.com/prod/events',
+    
+    // Local storage keys
+    STORAGE_KEYS: {
+        RECENT_ANNOUNCEMENTS: 'recentAnnouncements'
+    }
+};
+
+// DOM Elements
+const elements = {
+    form: document.getElementById('eventForm'),
+    submitBtn: document.getElementById('submitBtn'),
+    previewBtn: document.getElementById('previewBtn'),
+    previewModal: document.getElementById('previewModal'),
+    previewContent: document.getElementById('previewContent'),
+    closePreview: document.getElementById('closePreview'),
+    editMessage: document.getElementById('editMessage'),
+    confirmSend: document.getElementById('confirmSend'),
+    statusContainer: document.getElementById('statusContainer'),
+    loadingOverlay: document.getElementById('loadingOverlay'),
+    recentList: document.getElementById('recentList'),
+    
+    // Form inputs
+    eventTitle: document.getElementById('eventTitle'),
+    eventDescription: document.getElementById('eventDescription'),
+    eventDate: document.getElementById('eventDate'),
+    eventTime: document.getElementById('eventTime'),
+    eventLocation: document.getElementById('eventLocation')
+};
+
+// Application State
+let currentFormData = null;
+
+// Initialize Application
+document.addEventListener('DOMContentLoaded', function() {
+    initializeApp();
+});
+
+function initializeApp() {
+    setupEventListeners();
+    setupFormValidation();
+    loadRecentAnnouncements();
+    setMinDate();
+}
+
+function setupEventListeners() {
+    // Form submission
+    elements.form.addEventListener('submit', handleFormSubmit);
+    
+    // Preview functionality
+    elements.previewBtn.addEventListener('click', showPreview);
+    elements.closePreview.addEventListener('click', hidePreview);
+    elements.editMessage.addEventListener('click', hidePreview);
+    elements.confirmSend.addEventListener('click', handleConfirmSend);
+    
+    // Character counter for description
+    elements.eventDescription.addEventListener('input', updateCharacterCount);
+    
+    // Modal close on outside click
+    elements.previewModal.addEventListener('click', function(e) {
+        if (e.target === elements.previewModal) {
+            hidePreview();
+        }
+    });
+    
+    // Keyboard shortcuts
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            hidePreview();
+        }
+    });
+}
+
+function setupFormValidation() {
+    // Real-time validation
+    const inputs = [elements.eventTitle, elements.eventDescription, elements.eventDate];
+    
+    inputs.forEach(input => {
+        input.addEventListener('input', validateForm);
+        input.addEventListener('blur', validateForm);
+    });
+}
+
+function setMinDate() {
+    // Set minimum date to today
+    const today = new Date().toISOString().split('T')[0];
+    elements.eventDate.min = today;
+    
+    // Set default date to today if empty
+    if (!elements.eventDate.value) {
+        elements.eventDate.value = today;
+    }
+}
+
+function validateForm() {
+    const title = elements.eventTitle.value.trim();
+    const description = elements.eventDescription.value.trim();
+    const date = elements.eventDate.value;
+    
+    const isValid = title && description && date;
+    
+    elements.submitBtn.disabled = !isValid;
+    elements.previewBtn.disabled = !isValid;
+    
+    return isValid;
+}
+
+function updateCharacterCount() {
+    const current = elements.eventDescription.value.length;
+    const max = elements.eventDescription.maxLength;
+    const counter = document.querySelector('.char-count');
+    
+    counter.textContent = `${current}/${max} characters`;
+    
+    if (current > max * 0.9) {
+        counter.style.color = '#ef4444';
+    } else if (current > max * 0.7) {
+        counter.style.color = '#f59e0b';
+    } else {
+        counter.style.color = '#6b7280';
+    }
+}
+
+function getFormData() {
+    return {
+        title: elements.eventTitle.value.trim(),
+        description: elements.eventDescription.value.trim(),
+        date: elements.eventDate.value,
+        time: elements.eventTime.value,
+        location: elements.eventLocation.value.trim()
+    };
+}
+
+function formatPreviewMessage(data) {
+    let message = `🎉 NEW EVENT ANNOUNCEMENT 🎉\n\n`;
+    message += `📅 Event: ${data.title}\n`;
+    message += `📝 Description: ${data.description}\n`;
+    message += `📆 Date: ${formatDate(data.date)}`;
+    
+    if (data.time) {
+        message += `\n🕐 Time: ${formatTime(data.time)}`;
+    }
+    
+    if (data.location) {
+        message += `\n📍 Location: ${data.location}`;
+    }
+    
+    message += `\n\nDon't miss out on this exciting event!\n\n`;
+    message += `---\n`;
+    message += `This is an automated notification from the Event Announcement System`;
+    
+    return message;
+}
+
+function formatDate(dateString) {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+    });
+}
+
+function formatTime(timeString) {
+    if (!timeString) return '';
+    
+    const [hours, minutes] = timeString.split(':');
+    const date = new Date();
+    date.setHours(parseInt(hours), parseInt(minutes));
+    
+    return date.toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+    });
+}
+
+function showPreview() {
+    if (!validateForm()) {
+        showStatus('Please fill in all required fields', 'error');
+        return;
+    }
+    
+    currentFormData = getFormData();
+    const previewMessage = formatPreviewMessage(currentFormData);
+    
+    elements.previewContent.textContent = previewMessage;
+    elements.previewModal.style.display = 'block';
+    document.body.style.overflow = 'hidden';
+}
+
+function hidePreview() {
+    elements.previewModal.style.display = 'none';
+    document.body.style.overflow = 'auto';
+}
+
+function handleFormSubmit(e) {
+    e.preventDefault();
+    
+    if (!validateForm()) {
+        showStatus('Please fill in all required fields', 'error');
+        return;
+    }
+    
+    currentFormData = getFormData();
+    sendAnnouncement(currentFormData);
+}
+
+function handleConfirmSend() {
+    hidePreview();
+    if (currentFormData) {
+        sendAnnouncement(currentFormData);
+    }
+}
+
+async function sendAnnouncement(data) {
+    showLoading(true);
+    
+    try {
+        // Validate API endpoint
+        if (CONFIG.API_ENDPOINT.includes('REPLACE_WITH_API_GATEWAY_URL')) {
+            throw new Error('API endpoint not configured. Please run ./update-frontend.sh after deploying with Terraform.');
+        }
+        
+        const response = await fetch(CONFIG.API_ENDPOINT, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(data)
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok && result.success) {
+            showStatus(`✅ Event announcement sent successfully! Message ID: ${result.messageId}`, 'success');
+            saveRecentAnnouncement(data, result);
+            resetForm();
+            loadRecentAnnouncements();
+        } else {
+            throw new Error(result.error || 'Failed to send announcement');
+        }
+        
+    } catch (error) {
+        console.error('Error sending announcement:', error);
+        
+        let errorMessage = 'Failed to send announcement. ';
+        
+        if (error.message.includes('API_ENDPOINT')) {
+            errorMessage += 'Please configure the API endpoint in the script.js file.';
+        } else if (error.name === 'TypeError' && error.message.includes('fetch')) {
+            errorMessage += 'Please check your internet connection and API configuration.';
+        } else {
+            errorMessage += error.message || 'Please try again later.';
+        }
+        
+        showStatus(`❌ ${errorMessage}`, 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+function showLoading(show) {
+    elements.loadingOverlay.style.display = show ? 'block' : 'none';
+    elements.submitBtn.disabled = show;
+    elements.previewBtn.disabled = show;
+}
+
+function showStatus(message, type = 'info') {
+    const statusDiv = document.createElement('div');
+    statusDiv.className = `status-message status-${type}`;
+    statusDiv.textContent = message;
+    
+    // Clear previous messages
+    elements.statusContainer.innerHTML = '';
+    elements.statusContainer.appendChild(statusDiv);
+    
+    // Auto-hide after 10 seconds for success messages, 15 seconds for errors
+    const hideDelay = type === 'error' ? 15000 : 10000;
+    setTimeout(() => {
+        if (statusDiv.parentNode) {
+            statusDiv.remove();
+        }
+    }, hideDelay);
+    
+    // Scroll to status message
+    statusDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function resetForm() {
+    elements.form.reset();
+    setMinDate();
+    updateCharacterCount();
+    validateForm();
+    currentFormData = null;
+}
+
+function saveRecentAnnouncement(data, result) {
+    try {
+        const recent = getRecentAnnouncements();
+        const announcement = {
+            ...data,
+            messageId: result.messageId,
+            timestamp: new Date().toISOString(),
+            formattedDate: formatDate(data.date)
+        };
+        
+        recent.unshift(announcement);
+        
+        // Keep only last 10 announcements
+        const trimmed = recent.slice(0, 10);
+        
+        localStorage.setItem(CONFIG.STORAGE_KEYS.RECENT_ANNOUNCEMENTS, JSON.stringify(trimmed));
+    } catch (error) {
+        console.warn('Failed to save recent announcement:', error);
+    }
+}
+
+function getRecentAnnouncements() {
+    try {
+        const stored = localStorage.getItem(CONFIG.STORAGE_KEYS.RECENT_ANNOUNCEMENTS);
+        return stored ? JSON.parse(stored) : [];
+    } catch (error) {
+        console.warn('Failed to load recent announcements:', error);
+        return [];
+    }
+}
+
+function loadRecentAnnouncements() {
+    const recent = getRecentAnnouncements();
+    
+    if (recent.length === 0) {
+        elements.recentList.innerHTML = '<p class="no-announcements">No recent announcements</p>';
+        return;
+    }
+    
+    const html = recent.map(announcement => `
+        <div class="recent-item">
+            <div class="recent-item-title">${escapeHtml(announcement.title)}</div>
+            <div class="recent-item-date">
+                ${announcement.formattedDate}
+                ${announcement.time ? `at ${formatTime(announcement.time)}` : ''}
+                ${announcement.location ? `• ${escapeHtml(announcement.location)}` : ''}
+            </div>
+        </div>
+    `).join('');
+    
+    elements.recentList.innerHTML = html;
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Utility function to test API connectivity
+async function testAPIConnection() {
+    try {
+        const response = await fetch(CONFIG.API_ENDPOINT, {
+            method: 'OPTIONS'
+        });
+        
+        console.log('API Connection Test:', response.ok ? 'Success' : 'Failed');
+        return response.ok;
+    } catch (error) {
+        console.error('API Connection Test Failed:', error);
+        return false;
+    }
+}
+
+// Development helper - remove in production
+if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    console.log('Development mode detected');
+    console.log('Current API Endpoint:', CONFIG.API_ENDPOINT);
+    
+    // Add test button for development
+    const testBtn = document.createElement('button');
+    testBtn.textContent = 'Test API Connection';
+    testBtn.className = 'btn btn-secondary';
+    testBtn.style.margin = '10px';
+    testBtn.onclick = testAPIConnection;
+    document.body.appendChild(testBtn);
+}

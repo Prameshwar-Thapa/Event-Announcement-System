@@ -1,0 +1,15 @@
+# Copy this file to terraform.tfvars and update with your values
+
+aws_region   = "us-east-1"
+environment  = "prod"
+project_name = "event-announcement"
+
+# Add your email addresses for notifications
+email_subscriptions = [
+  "your-email@example.com"
+]
+
+# Add your phone numbers for SMS notifications (with country code)
+sms_subscriptions = [
+  "+1234567890"
+]
